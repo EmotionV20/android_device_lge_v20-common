@@ -1,6 +1,14 @@
 #
-# System Properties for LG G5
+# System Properties for LG V20
 #
+
+#ADB
+ro.secure=0
+ro.adb.secure=0
+persist.sys.root_access=3
+persist.service.adb.enable=1
+persist.service.debuggable=1
+persist.sys.usb.config=mtp,adb
 
 # Audio
 ro.qc.sdk.audio.ssr=false
