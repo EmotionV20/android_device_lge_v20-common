@@ -34,7 +34,7 @@ fi
 setup_vendor "$DEVICE_COMMON" "$VENDOR" "$EMOTION_ROOT" true
 
 # Copyright headers and common guards
-write_headers "v20 h918 h910 ls997"
+write_headers "v20 h918 h910 ls997 us996"
 
 # The standard blobs
 write_makefiles "$MY_DIR"/proprietary-files.txt
