@@ -23,39 +23,59 @@ import android.os.Message;
 import android.os.Parcel;
 
 /**
- * Custom Qualcomm RIL for LG G5
+ * Custom Qualcomm RIL for LgeLteRIL
  *
  * {@hide}
  */
 public class LgeLteRIL extends RIL implements CommandsInterface {
-
-    public static final int RIL_UNSOL_AVAILABLE_RAT = 1054;
-    public static final int RIL_UNSOL_LOG_RF_BAND_INFO = 1165;
-    public static final int RIL_UNSOL_LTE_REJECT_CAUSE = 1187;
-
-    public LgeLteRIL(Context context, int preferredNetworkType, int cdmaSubscription) {
-        super(context, preferredNetworkType, cdmaSubscription, null);
-    }
+    static final String LOG_TAG = "LgeLteRIL";
 
     public LgeLteRIL(Context context, int preferredNetworkType,
             int cdmaSubscription, Integer instanceId) {
         super(context, preferredNetworkType, cdmaSubscription, instanceId);
     }
 
+    public LgeLteRIL(Context context, int networkMode, int cdmaSubscription) {
+        this(context, networkMode, cdmaSubscription, null);
+    }
+
     @Override
-    public void
-    setNetworkSelectionModeManual(String operatorNumeric, Message response) {
-        RILRequest rr
-                = RILRequest.obtain(RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL,
-                                    response);
+    protected Object
+    responseIccCardStatus(Parcel p) {
+        IccCardApplicationStatus appStatus = null;
 
-        if (RILJ_LOGD) riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
-                    + " " + operatorNumeric);
+        IccCardStatus cardStatus = new IccCardStatus();
+        cardStatus.setCardState(p.readInt());
+        cardStatus.setUniversalPinState(p.readInt());
+        cardStatus.mGsmUmtsSubscriptionAppIndex = p.readInt();
+        cardStatus.mCdmaSubscriptionAppIndex = p.readInt();
+        cardStatus.mImsSubscriptionAppIndex = p.readInt();
 
-        rr.mParcel.writeInt(2);
-        rr.mParcel.writeString(operatorNumeric);
-        rr.mParcel.writeString("2"); // NOCHANGE
+        int numApplications = p.readInt();
 
-        send(rr);
+        // limit to maximum allowed applications
+        if (numApplications > IccCardStatus.CARD_MAX_APPS) {
+            numApplications = IccCardStatus.CARD_MAX_APPS;
+        }
+        cardStatus.mApplications = new IccCardApplicationStatus[numApplications];
+
+        for (int i = 0 ; i < numApplications ; i++) {
+            appStatus = new IccCardApplicationStatus();
+            appStatus.app_type       = appStatus.AppTypeFromRILInt(p.readInt());
+            appStatus.app_state      = appStatus.AppStateFromRILInt(p.readInt());
+            appStatus.perso_substate = appStatus.PersoSubstateFromRILInt(p.readInt());
+            appStatus.aid            = p.readString();
+            appStatus.app_label      = p.readString();
+            appStatus.pin1_replaced  = p.readInt();
+            appStatus.pin1           = appStatus.PinStateFromRILInt(p.readInt());
+            appStatus.pin2           = appStatus.PinStateFromRILInt(p.readInt());
+            int remaining_count_pin1 = p.readInt();
+            int remaining_count_puk1 = p.readInt();
+            int remaining_count_pin2 = p.readInt();
+            int remaining_count_puk2 = p.readInt();
+            cardStatus.mApplications[i] = appStatus;
+        }
+
+        return cardStatus;
     }
 }
