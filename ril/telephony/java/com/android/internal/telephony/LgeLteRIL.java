@@ -22,69 +22,104 @@ import android.content.Context;
 import android.os.AsyncResult;
 import android.os.Message;
 import android.os.Parcel;
+import android.os.SystemProperties;
+import android.util.Log;
+
+import com.android.internal.telephony.RILConstants;
+
+import com.android.internal.telephony.uicc.IccCardApplicationStatus;
+import com.android.internal.telephony.uicc.IccCardStatus;
 
 /**
- * Custom Qualcomm RIL for LG G5
+ * Custom Qualcomm RIL for G4
  *
  * {@hide}
  */
 public class LgeLteRIL extends RIL implements CommandsInterface {
 
-    public static final int RIL_UNSOL_AVAILABLE_RAT = 1054;
-    public static final int RIL_UNSOL_LOG_RF_BAND_INFO = 1165;
-    public static final int RIL_UNSOL_LTE_REJECT_CAUSE = 1187;
-    public LgeLteRIL(Context context, int preferredNetworkType, int cdmaSubscription) {
-        super(context, preferredNetworkType, cdmaSubscription, null);
-    }
+    static final String LOG_TAG = "LgeLteRIL";
+    private boolean isGSM = false;
 
     public LgeLteRIL(Context context, int preferredNetworkType,
             int cdmaSubscription, Integer instanceId) {
-        super(context, preferredNetworkType, cdmaSubscription, instanceId);
+        this(context, preferredNetworkType, cdmaSubscription);
+        mQANElements = 5;
+    }
+
+    public LgeLteRIL(Context context, int networkMode, int cdmaSubscription) {
+        super(context, networkMode, cdmaSubscription);
     }
 
     @Override
     protected Object
-    responseFailCause(Parcel p) {
-        int numInts;
-        int response[];
+    responseIccCardStatus(Parcel p) {
+        IccCardApplicationStatus appStatus = null;
 
-        numInts = p.readInt();
-        response = new int[numInts];
-        for (int i = 0 ; i < numInts ; i++) {
-            response[i] = p.readInt();
+        IccCardStatus cardStatus = new IccCardStatus();
+        cardStatus.setCardState(p.readInt());
+        cardStatus.setUniversalPinState(p.readInt());
+        cardStatus.mGsmUmtsSubscriptionAppIndex = p.readInt();
+        cardStatus.mCdmaSubscriptionAppIndex = p.readInt();
+        cardStatus.mImsSubscriptionAppIndex = p.readInt();
+
+        int numApplications = p.readInt();
+
+        // limit to maximum allowed applications
+        if (numApplications > IccCardStatus.CARD_MAX_APPS) {
+            numApplications = IccCardStatus.CARD_MAX_APPS;
         }
-        LastCallFailCause failCause = new LastCallFailCause();
-        failCause.causeCode = response[0];
-        if (p.dataAvail() > 0) {
-          failCause.vendorCause = p.readString();
+        cardStatus.mApplications = new IccCardApplicationStatus[numApplications];
+
+        for (int i = 0 ; i < numApplications ; i++) {
+            appStatus = new IccCardApplicationStatus();
+            appStatus.app_type       = appStatus.AppTypeFromRILInt(p.readInt());
+            appStatus.app_state      = appStatus.AppStateFromRILInt(p.readInt());
+            appStatus.perso_substate = appStatus.PersoSubstateFromRILInt(p.readInt());
+            appStatus.aid            = p.readString();
+            appStatus.app_label      = p.readString();
+            appStatus.pin1_replaced  = p.readInt();
+            appStatus.pin1           = appStatus.PinStateFromRILInt(p.readInt());
+            appStatus.pin2           = appStatus.PinStateFromRILInt(p.readInt());
+            int remaining_count_pin1 = p.readInt();
+            int remaining_count_puk1 = p.readInt();
+            int remaining_count_pin2 = p.readInt();
+            int remaining_count_puk2 = p.readInt();
+            cardStatus.mApplications[i] = appStatus;
         }
-        return failCause;
+        // For Sprint GSM(LTE) only SIM
+        if (numApplications == 1 && !isGSM && appStatus != null && appStatus.app_type == appStatus.AppTypeFromRILInt(2)) {
+            cardStatus.mApplications = new IccCardApplicationStatus[numApplications + 2];
+            cardStatus.mGsmUmtsSubscriptionAppIndex = 0;
+            cardStatus.mApplications[cardStatus.mGsmUmtsSubscriptionAppIndex] = appStatus;
+            cardStatus.mCdmaSubscriptionAppIndex = 1;
+            cardStatus.mImsSubscriptionAppIndex = 2;
+            IccCardApplicationStatus appStatus2 = new IccCardApplicationStatus();
+            appStatus2.app_type       = appStatus2.AppTypeFromRILInt(4); // CSIM State
+            appStatus2.app_state      = appStatus.app_state;
+            appStatus2.perso_substate = appStatus.perso_substate;
+            appStatus2.aid            = appStatus.aid;
+            appStatus2.app_label      = appStatus.app_label;
+            appStatus2.pin1_replaced  = appStatus.pin1_replaced;
+            appStatus2.pin1           = appStatus.pin1;
+            appStatus2.pin2           = appStatus.pin2;
+            cardStatus.mApplications[cardStatus.mCdmaSubscriptionAppIndex] = appStatus2;
+            IccCardApplicationStatus appStatus3 = new IccCardApplicationStatus();
+            appStatus3.app_type       = appStatus3.AppTypeFromRILInt(5); // IMS State
+            appStatus3.app_state      = appStatus.app_state;
+            appStatus3.perso_substate = appStatus.perso_substate;
+            appStatus3.aid            = appStatus.aid;
+            appStatus3.app_label      = appStatus.app_label;
+            appStatus3.pin1_replaced  = appStatus.pin1_replaced;
+            appStatus3.pin1           = appStatus.pin1;
+            appStatus3.pin2           = appStatus.pin2;
+            cardStatus.mApplications[cardStatus.mImsSubscriptionAppIndex] = appStatus3;
+        }
+        return cardStatus;
     }
 
     @Override
-    public void getRadioCapability(Message response) {
-        riljLog("getRadioCapability: returning static radio capability");
-        if (response != null) {
-            Object ret = makeStaticRadioCapability();
-            AsyncResult.forMessage(response, ret, null);
-            response.sendToTarget();
-        }
-    }
-
-    @Override
-    public void
-    setNetworkSelectionModeManual(String operatorNumeric, Message response) {
-        RILRequest rr
-                = RILRequest.obtain(RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL,
-                                    response);
-
-        if (RILJ_LOGD) riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
-                    + " " + operatorNumeric);
-
-        rr.mParcel.writeInt(2);
-        rr.mParcel.writeString(operatorNumeric);
-        rr.mParcel.writeString("2"); // NOCHANGE
-
-        send(rr);
+    public void setPhoneType(int phoneType){
+        super.setPhoneType(phoneType);
+        isGSM = (phoneType != RILConstants.CDMA_PHONE);
     }
 }
