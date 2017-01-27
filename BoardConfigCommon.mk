@@ -170,7 +170,7 @@ TARGET_RECOVERY_FSTAB := $(COMMON_PATH)/rootdir/etc/fstab.qcom
 
 # RIL
 BOARD_RIL_CLASS := ../../../device/lge/v20-common/ril/
-#TARGET_RIL_VARIANT := caf
+TARGET_RIL_VARIANT := caf
 
 # SELinux policies
 include device/qcom/sepolicy/sepolicy.mk
